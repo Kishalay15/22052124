@@ -1,6 +1,7 @@
 const express = require("express");
-const { getTopUsers } = require("../controllers/userController");
+const { handleGetTopUsers } = require("../controllers/userController");
 const router = express.Router();
 
-router.get("/", getTopUsers);
+router.get("/", handleGetTopUsers);
+
 module.exports = router;

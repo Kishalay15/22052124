@@ -1,30 +1,48 @@
-const { fetchPosts, fetchComments } = require("../services/postService");
+const { fetchAllPosts, fetchPostComments } = require("../services/postService");
+
 async function getPosts(req, res) {
   try {
     const { type } = req.query;
-    const posts = await fetchPosts();
-    const comments = await fetchComments();
+    if (!type || (type !== "popular" && type !== "latest")) {
+      return res.status(400).json({ error: "Invalid query parameter" });
+    }
+
+    const posts = await fetchAllPosts();
+    if (!posts || posts.length === 0) {
+      return res.status(404).json({ error: "No posts found" });
+    }
 
     if (type === "popular") {
-      const postCommentCount = posts.map((post) => ({
-        ...post,
-        commentCount: comments.filter((comment) => comment.postId === post.id)
-          .length,
-      }));
-      const maxComments = Math.max(
-        ...postCommentCount.map((p) => p.commentCount)
+      const postCommentCounts = await Promise.all(
+        posts.map(async (post) => {
+          try {
+            const comments = await fetchPostComments(post.id);
+            return { ...post, commentCount: comments ? comments.length : 0 };
+          } catch (err) {
+            console.error(`Error fetching comments for post ${post.id}:`, err);
+            return { ...post, commentCount: 0 };
+          }
+        })
       );
-      return res.json(
-        postCommentCount.filter((p) => p.commentCount === maxComments)
-      );
+
+      const validPosts = postCommentCounts.filter((p) => p.commentCount > 0);
+      if (validPosts.length === 0) {
+        return res.json([]);
+      }
+
+      const maxComments = Math.max(...validPosts.map((p) => p.commentCount));
+      return res.json(validPosts.filter((p) => p.commentCount === maxComments));
     }
+
     if (type === "latest") {
-      posts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-      return res.json(posts.slice(0, 5));
+      const validPosts = posts.filter((post) => post.timestamp);
+      validPosts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      return res.json(validPosts.slice(0, 5));
     }
-    res.status(400).json({ error: "Invalid query parameter" });
   } catch (error) {
+    console.error("Error fetching posts:", error);
     res.status(500).json({ error: "Failed to fetch data" });
   }
 }
+
 module.exports = { getPosts };
